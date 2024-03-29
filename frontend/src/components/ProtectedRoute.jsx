@@ -1,24 +1,41 @@
-import  { useState, useEffect, useCallback } from "react";
 import { Navigate } from "react-router-dom";
-import {jwtDecode} from "jwt-decode";
-
+import { jwtDecode } from "jwt-decode";
+import api from "../api";
 import { REFRESH_TOKEN, ACCESS_TOKEN } from "../constants";
-import PropTypes from 'prop-types';
+import { useState, useEffect } from "react";
+
 
 function ProtectedRoute({ children }) {
-    const [isAuthorised, setIsAuthorised] = useState(null);
+    const [isAuthorized, setIsAuthorized] = useState(null);
 
-    const getRefreshToken = useCallback(() => {
-        return localStorage.getItem(REFRESH_TOKEN);
-    }, []);
+    useEffect(() => {
+        auth().catch(() => setIsAuthorized(false))
+    }, [])
 
-    const auth = useCallback(async () => {
-        const refreshToken = getRefreshToken();
-        if (!refreshToken) {
-            setIsAuthorised(false);
+    const refreshToken = async () => {
+        const refreshToken = localStorage.getItem(REFRESH_TOKEN);
+        try {
+            const res = await api.post("/api/token/refresh/", {
+                refresh: refreshToken,
+            });
+            if (res.status === 200) {
+                localStorage.setItem(ACCESS_TOKEN, res.data.access)
+                setIsAuthorized(true)
+            } else {
+                setIsAuthorized(false)
+            }
+        } catch (error) {
+            console.log(error);
+            setIsAuthorized(false);
+        }
+    };
+
+    const auth = async () => {
+        const token = localStorage.getItem(ACCESS_TOKEN);
+        if (!token) {
+            setIsAuthorized(false);
             return;
         }
-        const token = localStorage.getItem(ACCESS_TOKEN);
         const decoded = jwtDecode(token);
         const tokenExpiration = decoded.exp;
         const now = Date.now() / 1000;
@@ -26,23 +43,15 @@ function ProtectedRoute({ children }) {
         if (tokenExpiration < now) {
             await refreshToken();
         } else {
-            setIsAuthorised(true);
+            setIsAuthorized(true);
         }
-    }, [getRefreshToken]);
+    };
 
-    useEffect(() => {
-        auth();
-    }, [auth]);
-
-    if (isAuthorised === null) {
+    if (isAuthorized === null) {
         return <div>Loading...</div>;
     }
 
-    return isAuthorised ? children : <Navigate to="/login" />;
+    return isAuthorized ? children : <Navigate to="/login" />;
 }
 
-ProtectedRoute.propTypes = {
-    children: PropTypes.node.isRequired,
-};
-
-export default ProtectedRoute;
+export default ProtectedRoute
